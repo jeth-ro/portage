@@ -798,7 +798,7 @@ class ResolverPlayground:
         if "--usepkgonly" in options:
             options["--usepkg"] = True
 
-        binpkg_selection_config(options, self.settings)
+        binpkg_filter = binpkg_selection_config(options, self.settings)
 
         global_noiselimit = portage.util.noiselimit
         global_emergelog_disable = _emerge.emergelog._disable
@@ -807,13 +807,11 @@ class ResolverPlayground:
                 portage.util.noiselimit = -2
             _emerge.emergelog._disable = True
 
-            if self._binrepos:
-                self.trees[self.eroot]["bintree"].populate(
-                    getbinpkgs=options.get("--getbinpkg", False),
-                    getbinpkg_exclude=options.get("--getbinpkg-exclude", None),
-                    getbinpkg_include=options.get("--getbinpkg-include", None),
-                    pretend=options.get("--pretend", False),
-                )
+            self.trees[self.eroot]["bintree"].populate(
+                getbinpkgs=options.get("--getbinpkg", False),
+                pretend=options.get("--pretend", False),
+                pkg_filter=binpkg_filter,
+            )
 
             # NOTE: frozen_config could be cached and reused if options and params were constant.
             params_action = (

@@ -62,6 +62,47 @@ from pathlib import PurePath
 from urllib.parse import urlparse
 
 
+class BinPkgFilter:
+    def __init__(
+        self,
+        local_blacklist=None,
+        local_whitelist=None,
+        remote_blacklist=None,
+        remote_whitelist=None,
+    ):
+        self._local_blacklist = local_blacklist
+        self._local_whitelist = local_whitelist
+        self._remote_blacklist = remote_blacklist
+        self._remote_whitelist = remote_whitelist
+
+    def _test_local(self, cpv):
+        excluded = self._local_blacklist and (
+            not self._local_blacklist.isEmpty()
+            and self._local_blacklist.containsCPV(cpv)
+        )
+        included = not self._local_whitelist or (
+            self._local_whitelist.isEmpty()
+            or self._local_whitelist.containsCPV(cpv)
+        )
+        return not (excluded or not included)
+
+    def _test_remote(self, cpv):
+        excluded = self._remote_blacklist and (
+            not self._remote_blacklist.isEmpty()
+            and self._remote_blacklist.containsCPV(cpv)
+        )
+        included = not self._remote_whitelist or (
+            self._remote_whitelist.isEmpty()
+            or self._remote_whitelist.containsCPV(cpv)
+        )
+        return not (excluded or not included)
+
+    def test(self, cpv, remote=False):
+        match_local = self._test_local(cpv)
+        match_remote = not remote or self._test_remote(cpv)
+        return match_local and match_remote
+
+
 class UseCachedCopyOfRemoteIndex(Exception):
     # If the local copy is recent enough
     # then fetching the remote index can be skipped.
@@ -905,14 +946,13 @@ class binarytree:
     def populate(
         self,
         getbinpkgs=False,
-        getbinpkg_exclude=None,
-        getbinpkg_include=None,
         getbinpkg_refresh=False,
         verbose=False,
         add_repos=(),
         force_reindex=False,
         invalid_errors=True,
         pretend=False,
+        pkg_filter=None,
     ):
         """
         Populates the binarytree with package metadata.
@@ -937,7 +977,9 @@ class binarytree:
         if self._populating:
             return
 
-        if not os.path.isdir(self.pkgdir) and not (getbinpkgs or add_repos):
+        if not os.path.isdir(self.pkgdir) and not (
+            getbinpkgs or add_repos or pkg_filter
+        ):
             self.populated = True
             return
 
@@ -953,6 +995,7 @@ class binarytree:
                 reindex="pkgdir-index-trusted" not in self.settings.features
                 or force_reindex,
                 invalid_errors=invalid_errors,
+                pkg_filter=pkg_filter,
             )
 
             if update_pkgindex and self.dbapi.writable:
@@ -964,7 +1007,7 @@ class binarytree:
                 pkgindex_lock = None
                 try:
                     pkgindex_lock = lockfile(self._pkgindex_file, wantnewlockfile=True)
-                    update_pkgindex = self._populate_local()
+                    update_pkgindex = self._populate_local(pkg_filter=pkg_filter)
                     if update_pkgindex:
                         self._pkgindex_write(update_pkgindex)
                 finally:
@@ -1005,8 +1048,7 @@ class binarytree:
                         getbinpkg_refresh=getbinpkg_refresh,
                         pretend=pretend,
                         verbose=verbose,
-                        getbinpkg_exclude=getbinpkg_exclude,
-                        getbinpkg_include=getbinpkg_include,
+                        pkg_filter=pkg_filter,
                     )
 
         finally:
@@ -1014,7 +1056,7 @@ class binarytree:
 
         self.populated = True
 
-    def _populate_local(self, reindex=True, invalid_errors=True):
+    def _populate_local(self, reindex=True, invalid_errors=True, pkg_filter=None):
         from portage.util import writemsg
         from portage.versions import _pkg_str, catpkgsplit, catsplit
 
@@ -1058,6 +1100,10 @@ class binarytree:
                 cpv = _pkg_str(
                     d["CPV"], metadata=d, settings=self.settings, db=self.dbapi
                 )
+
+                if pkg_filter and not pkg_filter.test(cpv):
+                    continue
+
                 d["CPV"] = cpv
                 metadata[_instance_key(cpv)] = d
                 path = d.get("PATH")
@@ -1144,6 +1190,10 @@ class binarytree:
                                 break
                         if match:
                             mycpv = match["CPV"]
+
+                            if pkg_filter and not pkg_filter.test(cpv, remote=True):
+                                continue
+
                             instance_key = _instance_key(mycpv)
                             pkg_paths[instance_key] = mypath
                             # update the path if the package has been moved
@@ -1409,8 +1459,7 @@ class binarytree:
         getbinpkg_refresh=True,
         pretend=False,
         verbose=False,
-        getbinpkg_exclude=None,
-        getbinpkg_include=None,
+        pkg_filter=None,
     ):
         from portage.util import writemsg
 
@@ -1427,11 +1476,6 @@ class binarytree:
         else:
             gpkg_only = False
 
-        atoms = " ".join(getbinpkg_exclude or []).split()
-        getbinpkg_exclude = WildcardPackageSet(atoms)
-        atoms = " ".join(getbinpkg_include or []).split()
-        getbinpkg_include = WildcardPackageSet(atoms)
-
         # Order by descending priority.
         for repo in reversed(list(self._binrepos_conf.values())):
             excluded = repo.getbinpkg_exclude or []
@@ -1439,12 +1483,12 @@ class binarytree:
             included = repo.getbinpkg_include or []
             getbinpkg_include_repo = WildcardPackageSet(included)
 
-            getbinpkg_exclude_repo.update(getbinpkg_exclude)
-            getbinpkg_include_repo.update(getbinpkg_include)
+            getbinpkg_exclude_repo.update(pkg_filter._remote_blacklist)
+            getbinpkg_include_repo.update(pkg_filter._remote_whitelist)
 
             # --getbinpkg-include overrides getbinpkg-exclude in binrepos.conf
             conflicted_exclude = getbinpkg_exclude_repo.getAtoms().intersection(
-                getbinpkg_include.getAtoms()
+                pkg_filter._remote_whitelist.getAtoms()
             )
             if conflicted_exclude:
                 writemsg(
@@ -1457,7 +1501,7 @@ class binarytree:
 
             # --getbinpkg-exclude overrides getbinpkg-include in binrepos.conf
             conflicted_include = getbinpkg_include_repo.getAtoms().intersection(
-                getbinpkg_exclude.getAtoms()
+                pkg_filter._remote_blacklist.getAtoms()
             )
             if conflicted_include:
                 writemsg(
@@ -1468,14 +1512,20 @@ class binarytree:
                 for a in conflicted_include:
                     getbinpkg_include_repo.remove(a)
 
+            pkg_filter_repo = BinPkgFilter(
+                pkg_filter._local_blacklist,
+                pkg_filter._local_whitelist,
+                getbinpkg_exclude_repo,
+                getbinpkg_include_repo,
+            )
+
             self._populate_remote_repo(
                 repo,
                 getbinpkg_refresh,
                 pretend,
                 verbose,
                 gpkg_only,
-                getbinpkg_exclude_repo,
-                getbinpkg_include_repo,
+                pkg_filter_repo,
             )
 
     def _populate_remote_repo(
@@ -1485,8 +1535,7 @@ class binarytree:
         pretend: bool,
         verbose: bool,
         gpkg_only: bool,
-        getbinpkg_exclude: WildcardPackageSet,
-        getbinpkg_include: WildcardPackageSet,
+        pkg_filter: BinPkgFilter,
     ):
         from portage.package.ebuild.fetch import _hide_url_passwd
         from portage.util import atomic_ofstream, writemsg
@@ -1841,8 +1890,6 @@ class binarytree:
                 # The current user doesn't have permission to cache the
                 # file, but that's alright.
         if pkgindex:
-            have_getbinpkg_exclude = not getbinpkg_exclude.isEmpty()
-            have_getbinpkg_include = not getbinpkg_include.isEmpty()
             remote_base_uri = pkgindex.header.get("URI", base_url)
             for d in pkgindex.packages:
                 cpv = _pkg_str(
@@ -1854,13 +1901,7 @@ class binarytree:
                 )
 
                 # Respect remote binary exclude and include lists if defined
-                in_getbinpkg_exclude = (
-                    have_getbinpkg_exclude and getbinpkg_exclude.containsCPV(cpv)
-                )
-                in_getbinpkg_include = (
-                    not have_getbinpkg_include or getbinpkg_include.containsCPV(cpv)
-                )
-                if in_getbinpkg_exclude or not in_getbinpkg_include:
+                if pkg_filter and not pkg_filter.test(cpv, remote=True):
                     continue
 
                 # Local package instances override remote instances

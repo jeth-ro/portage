@@ -197,23 +197,11 @@ class _frozen_depgraph_config:
         atoms = " ".join(myopts.get("--reinstall-atoms", [])).split()
         self.reinstall_atoms = WildcardPackageSet(atoms)
         atoms = " ".join(myopts.get("--usepkg-exclude", [])).split()
-        self.usepkg_exclude = WildcardPackageSet(atoms, allow_repo=True)
-        atoms = " ".join(myopts.get("--usepkg-include", [])).split()
-        self.usepkg_include = WildcardPackageSet(atoms, allow_repo=True)
-        atoms = " ".join(myopts.get("--useoldpkg-atoms", [])).split()
         self.useoldpkg_atoms = WildcardPackageSet(atoms)
         atoms = " ".join(myopts.get("--rebuild-exclude", [])).split()
         self.rebuild_exclude = WildcardPackageSet(atoms)
         atoms = " ".join(myopts.get("--rebuild-ignore", [])).split()
         self.rebuild_ignore = WildcardPackageSet(atoms)
-
-        for repo in settings.repositories:
-            self.usepkg_exclude.update(
-                a + _repo_separator + repo.name for a in repo.usepkg_exclude.getAtoms()
-            )
-            self.usepkg_include.update(
-                a + _repo_separator + repo.name for a in repo.usepkg_include.getAtoms()
-            )
 
         self.rebuild_if_new_rev = "--rebuild-if-new-rev" in myopts
         self.rebuild_if_new_ver = "--rebuild-if-new-ver" in myopts
@@ -5271,10 +5259,10 @@ class depgraph:
         # set usepkg-include set to expanded args if --nobindeps is
         # in effect, both usepkg-include and usepkg-exclude should
         # be assumed empty at this point
-        if "--nobindeps" in self._frozen_config.myopts:
-            for arg in self._expand_set_args(args):
-                arg_cp = (a.cp for a in arg.pset.getAtoms())
-                self._frozen_config.usepkg_include.update(arg_cp)
+#        if "--nobindeps" in self._frozen_config.myopts:
+#            for arg in self._expand_set_args(args):
+#                arg_cp = (a.cp for a in arg.pset.getAtoms())
+#                self._frozen_config.usepkg_include.update(arg_cp)
 
         return self._resolve(myfavorites)
 
@@ -7641,10 +7629,6 @@ class depgraph:
             self._frozen_config.myopts.get("--use-ebuild-visibility", "n") != "n"
         )
         reinstall_atoms = self._frozen_config.reinstall_atoms
-        usepkg_exclude = self._frozen_config.usepkg_exclude
-        usepkg_include = self._frozen_config.usepkg_include
-        have_usepkg_exclude = not usepkg_exclude.isEmpty()
-        have_usepkg_include = not usepkg_include.isEmpty()
         useoldpkg_atoms = self._frozen_config.useoldpkg_atoms
         matched_oldpkg = []
         # Behavior of the "selective" parameter depends on
@@ -7714,22 +7698,6 @@ class depgraph:
                         )
                     ):
                         continue
-
-                    if built and not installed:
-                        in_usepkg_exclude = (
-                            have_usepkg_exclude
-                            and usepkg_exclude.findAtomForPackage(
-                                pkg, modified_use=self._pkg_use_enabled(pkg)
-                            )
-                        )
-                        in_usepkg_include = (
-                            not have_usepkg_include
-                            or usepkg_include.findAtomForPackage(
-                                pkg, modified_use=self._pkg_use_enabled(pkg)
-                            )
-                        )
-                        if in_usepkg_exclude or not in_usepkg_include:
-                            break
 
                     # We can choose not to install a live package from using binary
                     # cache by disabling it with option --usepkg-exclude-live in the
