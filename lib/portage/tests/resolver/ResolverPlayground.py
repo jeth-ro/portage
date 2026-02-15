@@ -87,6 +87,7 @@ class ResolverPlayground:
             "package.properties",
             "package.provided",
             "packages",
+            "package.binary",
             "package.unmask",
             "package.use",
             "package.use.force",

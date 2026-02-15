@@ -86,6 +86,7 @@ from portage.versions import catpkgsplit, catsplit, cpv_getkey, _pkg_str
 from portage.package.ebuild._config import special_env_vars
 from portage.package.ebuild._config.env_var_validation import validate_cmd_var
 from portage.package.ebuild._config.features_set import features_set
+from portage.package.ebuild._config.BinaryManager import BinaryManager
 from portage.package.ebuild._config.KeywordsManager import KeywordsManager
 from portage.package.ebuild._config.LicenseManager import LicenseManager
 from portage.package.ebuild._config.UseManager import UseManager
@@ -326,6 +327,7 @@ class config:
             self._use_manager = clone._use_manager
             # force instantiation of lazy immutable objects when cloning, so
             # that they're not instantiated more than once
+            self._binary_manager_obj = clone._binary_manager
             self._keywords_manager_obj = clone._keywords_manager
             self._mask_manager_obj = clone._mask_manager
 
@@ -379,6 +381,7 @@ class config:
 
         else:
             # lazily instantiated objects
+            self._binary_manager_obj = None
             self._keywords_manager_obj = None
             self._mask_manager_obj = None
             self._virtuals_manager_obj = None
@@ -1319,6 +1322,12 @@ class config:
                 writemsg(f"!!! {str(e)}\n", noiselevel=-1)
 
     @property
+    def _binary_manager(self):
+        if self._binary_manager_obj is None:
+            self._binary_manager_obj = BinaryManager(self["PORTAGE_CONFIGROOT"])
+        return self._binary_manager_obj
+
+    @property
     def _keywords_manager(self):
         if self._keywords_manager_obj is None:
             self._keywords_manager_obj = KeywordsManager(
@@ -1382,6 +1391,9 @@ class config:
                 for soname in sonames
             )
         return self._soname_provided
+
+    def pkgSelected(self, pkg):
+        return self._binary_manager.isSelected(pkg)
 
     def expandLicenseTokens(self, tokens):
         """Take a token from ACCEPT_LICENSE or package.license and expand it

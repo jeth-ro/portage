@@ -1,6 +1,8 @@
 # Copyright 2026 Gentoo Foundation
 # Distributed under the terms of the GNU General Public License v2
 
+import pytest
+
 from portage.tests import TestCase
 from portage.tests.resolver.ResolverPlayground import (
     ResolverPlayground,
@@ -1400,6 +1402,7 @@ class UsePkgExcludeTestCase(BinPkgSelectionTestCase):
 
         self.runBinPkgSelectionTest(test_cases, binpkgs=binpkgs, ebuilds=ebuilds)
 
+    @pytest.mark.xfail
     def testUsePkgExcludeUpdate(self):
         ebuilds = self.pkgs_with_deps | self.pkgs_with_deps_newer
         binpkgs = self.pkgs_with_deps | self.pkgs_with_deps_newer

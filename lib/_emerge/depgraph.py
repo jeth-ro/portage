@@ -207,6 +207,8 @@ class _frozen_depgraph_config:
         self.rebuild_if_new_ver = "--rebuild-if-new-ver" in myopts
         self.rebuild_if_unbuilt = "--rebuild-if-unbuilt" in myopts
 
+        self.expanded_args = WildcardPackageSet([])
+
 
 class _depgraph_sets:
     def __init__(self):
@@ -5256,13 +5258,12 @@ class depgraph:
         # is to allow the user to force a specific merge order.
         self._dynamic_config._initial_arg_list = args[:]
 
-        # set usepkg-include set to expanded args if --nobindeps is
-        # in effect, both usepkg-include and usepkg-exclude should
-        # be assumed empty at this point
-#        if "--nobindeps" in self._frozen_config.myopts:
-#            for arg in self._expand_set_args(args):
-#                arg_cp = (a.cp for a in arg.pset.getAtoms())
-#                self._frozen_config.usepkg_include.update(arg_cp)
+        # expanded args if --nobindeps is in effect, so that we have a list
+        # resolved list of atoms which are permitted to be binaries
+        if "--nobindeps" in self._frozen_config.myopts:
+            for arg in self._expand_set_args(args):
+                arg_cp = (a.cp for a in arg.pset.getAtoms())
+                self._frozen_config.expanded_args.update(arg_cp)
 
         return self._resolve(myfavorites)
 
@@ -6965,6 +6966,11 @@ class depgraph:
                             pkg, modified_use=self._pkg_use_enabled(pkg)
                         ):
                             continue
+
+                        usepkg = "--usepkg" in self._frozen_config.myopts
+                        if usepkg and not self._frozen_config.settings.pkgSelected(pkg):
+                            continue
+
                         matched_something = True
                         yield pkg
 
@@ -7698,6 +7704,13 @@ class depgraph:
                         )
                     ):
                         continue
+
+                    if built and not installed:
+                        if "--nobindeps" in self._frozen_config.myopts:
+                            if not self._frozen_config.expanded_args.findAtomForPackage(
+                                    pkg, modified_use=self._pkg_use_enabled(pkg)
+                            ):
+                                continue
 
                     # We can choose not to install a live package from using binary
                     # cache by disabling it with option --usepkg-exclude-live in the
