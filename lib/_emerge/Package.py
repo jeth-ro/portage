@@ -26,6 +26,7 @@ class Package(Task):
     __hash__ = Task.__hash__
     __slots__ = (
         "built",
+        "binhost",
         "cpv",
         "depth",
         "installed",
@@ -117,8 +118,12 @@ class Package(Task):
                 raise
             db = self.root_config.trees["porttree"].dbapi
 
+        self.binhost = None
         if self.type_name == "binary":
             self.remote = db.bintree.isremote(self.cpv)
+            binrepo = getattr(self.cpv, "_repoconfig", None)
+            if binrepo:
+                self.binhost = binrepo.name
         else:
             self.remote = False
 

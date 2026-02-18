@@ -5,9 +5,10 @@ from portage import os
 from portage.const import USER_CONFIG_PATH
 from portage.util import grabdict_package
 
+
 class BinaryManager:
     def __init__(self, config_root):
-        path = os.path.join(config_root, USER_CONFIG_PATH, "package.binary")
+        path = os.path.join(config_root, USER_CONFIG_PATH, "package.select")
         self._binpkg_dict = grabdict_package(
             path,
             allow_repo=True,
@@ -27,10 +28,10 @@ class BinaryManager:
             for token in self._binpkg_dict[atom]:
                 if token == "BINHOST:":
                     binhost_expand = True
-                elif binhost_expand or token.startswith("BINHOST_"):
-                    binhosts.append( token.removeprefix("BINHOST_"))
+                elif binhost_expand or token.startswith("binhost_"):
+                    binhosts.append(token.removeprefix("binhost_"))
                 else:
-                    flags.append( token )
+                    flags.append(token)
 
         types = set()
         valid = ("ebuild", "pkgdir", "installed")
@@ -47,6 +48,6 @@ class BinaryManager:
             return pkg.type_name in flags
         else:
             if pkg.remote:
-                return len(binhosts) > 0
+                return "*" in binhosts or pkg.binhost in binhosts
             else:
                 return "pkgdir" in flags

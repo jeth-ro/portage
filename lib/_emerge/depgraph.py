@@ -7706,11 +7706,14 @@ class depgraph:
                         continue
 
                     if built and not installed:
-                        if "--nobindeps" in self._frozen_config.myopts:
-                            if not self._frozen_config.expanded_args.findAtomForPackage(
-                                    pkg, modified_use=self._pkg_use_enabled(pkg)
-                            ):
-                                continue
+                        nobindeps = "--nobindeps" in self._frozen_config.myopts
+                        if (
+                            nobindeps
+                            and not self._frozen_config.expanded_args.findAtomForPackage(
+                                pkg, modified_use=self._pkg_use_enabled(pkg)
+                            )
+                        ):
+                            continue
 
                     # We can choose not to install a live package from using binary
                     # cache by disabling it with option --usepkg-exclude-live in the
