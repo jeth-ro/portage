@@ -533,6 +533,16 @@ def parse_opts(tmpcmdline, silent=False):
 				don't match the current configuration",
             "choices": true_y_or_n,
         },
+        "--ebuild-exclude": {
+            "help": "A space separated list of package names or slot atoms. "
+            + "Emerge will ignore matching ebuild packages. ",
+            "action": "append",
+        },
+        "--ebuild-include": {
+            "help": "A space separated list of package names or slot atoms. "
+            + "Emerge will ignore non-matching ebuild packages. ",
+            "action": "append",
+        },
         "--getbinpkg": {
             "shortopt": "-g",
             "help": "fetch binary packages",
@@ -872,6 +882,8 @@ def parse_opts(tmpcmdline, silent=False):
 
     candidate_bad_options = (
         (myoptions.exclude, "exclude"),
+        (myoptions.ebuild_exclude, "ebuild-exclude"),
+        (myoptions.ebuild_include, "ebuild-include"),
         (myoptions.getbinpkg_exclude, "getbinpkg-exclude"),
         (myoptions.getbinpkg_include, "getbinpkg-include"),
         (myoptions.reinstall_atoms, "reinstall-atoms"),

@@ -2801,6 +2801,10 @@ def adjust_config(myopts, settings):
 
 
 def binpkg_selection_config(opts, settings):
+    atoms = " ".join(opts.pop("--ebuild-exclude", [])).split()
+    ebuild_exclude = WildcardPackageSet(atoms)
+    atoms = " ".join(opts.pop("--ebuild-include", [])).split()
+    ebuild_include = WildcardPackageSet(atoms)
     atoms = " ".join(opts.pop("--getbinpkg-exclude", [])).split()
     getbinpkg_exclude = WildcardPackageSet(atoms)
     atoms = " ".join(opts.pop("--getbinpkg-include", [])).split()
@@ -2809,6 +2813,18 @@ def binpkg_selection_config(opts, settings):
     usepkg_exclude = WildcardPackageSet(atoms, allow_repo=True)
     atoms = " ".join(opts.pop("--usepkg-include", [])).split()
     usepkg_include = WildcardPackageSet(atoms, allow_repo=True)
+
+    # --ebuild-include and --ebuild-exclude may not overlap
+    conflicted_atoms = ebuild_exclude.getAtoms().intersection(ebuild_include.getAtoms())
+    if conflicted_atoms:
+        writemsg(
+            "\n!!! The following atoms appear in both the --ebuild-exclude "
+            "and --ebuild-include command line arguments:\n"
+            "\n    %s\n" % ("\n    ".join(conflicted_atoms))
+        )
+        for a in conflicted_atoms:
+            ebuild_exclude.remove(a)
+            ebuild_include.remove(a)
 
     # --usepkg-include and --usepkg-exclude may not overlap
     conflicted_atoms = usepkg_exclude.getAtoms().intersection(usepkg_include.getAtoms())
@@ -2895,6 +2911,10 @@ def binpkg_selection_config(opts, settings):
             getbinpkg_exclude.remove(a)
             getbinpkg_include.remove(a)
 
+    if not ebuild_exclude.isEmpty():
+        opts["--ebuild-exclude"] = list(ebuild_exclude)
+    if not ebuild_include.isEmpty():
+        opts["--ebuild-include"] = list(ebuild_include)
     if not getbinpkg_exclude.isEmpty():
         opts["--getbinpkg-exclude"] = list(getbinpkg_exclude)
     if not getbinpkg_include.isEmpty():

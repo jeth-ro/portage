@@ -192,6 +192,10 @@ class _frozen_depgraph_config:
         else:
             self._required_set_names = {"world"}
 
+        atoms = " ".join(myopts.get("--ebuild-exclude", [])).split()
+        self.ebuild_exclude = WildcardPackageSet(atoms)
+        atoms = " ".join(myopts.get("--ebuild-include", [])).split()
+        self.ebuild_include = WildcardPackageSet(atoms)
         atoms = " ".join(myopts.get("--exclude", [])).split()
         self.excluded_pkgs = WildcardPackageSet(atoms)
         atoms = " ".join(myopts.get("--reinstall-atoms", [])).split()
@@ -7620,6 +7624,10 @@ class depgraph:
                 root, atom_cp
             )
 
+        have_ebuild_exclude = not self._frozen_config.ebuild_exclude.isEmpty()
+        ebuild_exclude = self._frozen_config.ebuild_exclude
+        have_ebuild_include = not self._frozen_config.ebuild_include.isEmpty()
+        ebuild_include = self._frozen_config.ebuild_include
         existing_node = None
         myeb = None
         rebuilt_binaries = "rebuilt_binaries" in self._dynamic_config.myparams
@@ -7705,6 +7713,24 @@ class depgraph:
                     ):
                         continue
 
+                    # --ebuild-exclude/include implementation
+                    if usepkg and not built and not installed:
+                        in_ebuild_exclude = (
+                            have_ebuild_exclude
+                            and ebuild_exclude.findAtomForPackage(
+                                pkg, modified_use=self._pkg_use_enabled(pkg)
+                            )
+                        )
+                        in_ebuild_include = (
+                            not have_ebuild_include
+                            or ebuild_include.findAtomForPackage(
+                                pkg, modified_use=self._pkg_use_enabled(pkg)
+                            )
+                        )
+                        if in_ebuild_exclude or not in_ebuild_include:
+                            continue
+
+                    # --nobindeps implementation
                     if built and not installed:
                         nobindeps = "--nobindeps" in self._frozen_config.myopts
                         if (

@@ -1,4 +1,7 @@
-from portage.tests.resolver.test_binpackage_selection import BinPkgSelectionTestCase, with_build_id
+from portage.tests.resolver.test_binpackage_selection import (
+    BinPkgSelectionTestCase,
+    with_build_id,
+)
 from portage.tests.resolver.ResolverPlayground import ResolverPlaygroundTestCase
 
 

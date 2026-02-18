@@ -80,6 +80,261 @@ class BinPkgSelectionTestCase(TestCase):
                 self.runBinPkgSelectionTest(tests, **kwargs)
 
 
+# test --ebuild-exclude option
+class EbuildExcludeTestCase(BinPkgSelectionTestCase):
+
+    def testEbuildExcludeOpt(self):
+        binpkgs = self.pkgs_no_deps
+        ebuilds = self.pkgs_no_deps
+
+        test_cases = (
+            # --ebuild-exclude to have no effect without --usepkg
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=True,
+                ignore_mergelist_order=True,
+                options={"--ebuild-exclude": ["foo"]},
+                mergelist=[
+                    "app-misc/foo-1.0",
+                    "app-misc/bar-1.0",
+                    "app-misc/baz-1.0",
+                ],
+            ),
+            # --ebuild-exclude to not prevent access to binaries
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=True,
+                ignore_mergelist_order=True,
+                options={"--ebuild-exclude": ["foo"], "--usepkg": True},
+                mergelist=[
+                    "[binary]app-misc/foo-1.0",
+                    "[binary]app-misc/bar-1.0",
+                    "[binary]app-misc/baz-1.0",
+                ],
+            ),
+        )
+
+        self.runBinPkgSelectionTest(test_cases, binpkgs=binpkgs, ebuilds=ebuilds)
+
+    def testEbuildExcludeBug924772(self):
+        missing_newer_binpkg = self.pkgs_with_deps_newer.copy()
+        missing_newer_binpkg.pop("app-misc/bar-1.1")
+
+        ebuilds = self.pkgs_with_deps | self.pkgs_with_deps_newer
+        binpkgs = self.pkgs_with_deps | missing_newer_binpkg
+        installed = self.pkgs_with_deps
+        world = ("app-misc/foo",)
+
+        binrepos = {"test_binrepo": binpkgs}
+
+        test_cases = (
+            # undesired behaviour: --usepkg and --getbinpkg fallback to an
+            # ebuild where a updated binpkg is missing from the binrepo
+            ResolverPlaygroundTestCase(
+                ["@world"],
+                success=True,
+                options={
+                    "--update": True,
+                    "--deep": True,
+                    "--usepkg": True,
+                },
+                mergelist=[
+                    "[binary]app-misc/baz-1.1",
+                    "app-misc/bar-1.1",
+                    "[binary]app-misc/foo-1.1",
+                ],
+            ),
+            ResolverPlaygroundTestCase(
+                ["@world"],
+                success=True,
+                options={
+                    "--update": True,
+                    "--deep": True,
+                    "--getbinpkg": True,
+                },
+                mergelist=[
+                    "[binary,remote]app-misc/baz-1.1",
+                    "app-misc/bar-1.1",
+                    "[binary,remote]app-misc/foo-1.1",
+                ],
+            ),
+            # use --ebuild-exclude to mask app-misc/bar ebuild without any side
+            # effects (see testEbuildExcludeOpt() above) when an updated binpkg
+            # is available
+            ResolverPlaygroundTestCase(
+                ["@world"],
+                success=True,
+                options={
+                    "--update": True,
+                    "--deep": True,
+                    "--usepkg": True,
+                    "--ebuild-exclude": ["bar"],
+                },
+                mergelist=[
+                    "[binary]app-misc/baz-1.1",
+                    "[binary]app-misc/foo-1.1",
+                ],
+            ),
+            ResolverPlaygroundTestCase(
+                ["@world"],
+                success=True,
+                options={
+                    "--update": True,
+                    "--deep": True,
+                    "--getbinpkg": True,
+                    "--ebuild-exclude": ["bar"],
+                },
+                mergelist=[
+                    "[binary,remote]app-misc/baz-1.1",
+                    "[binary,remote]app-misc/foo-1.1",
+                ],
+            ),
+        )
+
+        self.runBinPkgSelectionTest(
+            test_cases,
+            binpkgs=binpkgs,
+            binrepos=binrepos,
+            ebuilds=ebuilds,
+            installed=installed,
+            world=world,
+        )
+
+
+# test --ebuild-include option
+class EbuildIncludeTestCase(BinPkgSelectionTestCase):
+
+    def testEbuildIncludeOpt(self):
+        binpkgs = self.pkgs_no_deps
+        ebuilds = self.pkgs_no_deps
+
+        test_cases = (
+            # --ebuild-include to have no effect without --usepkg
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=True,
+                ignore_mergelist_order=True,
+                options={"--ebuild-include": ["foo"]},
+                mergelist=[
+                    "app-misc/foo-1.0",
+                    "app-misc/bar-1.0",
+                    "app-misc/baz-1.0",
+                ],
+            ),
+            # --ebuild-include to not prevent access to binaries
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=True,
+                ignore_mergelist_order=True,
+                options={"--ebuild-include": ["foo"], "--usepkg": True},
+                mergelist=[
+                    "[binary]app-misc/foo-1.0",
+                    "[binary]app-misc/bar-1.0",
+                    "[binary]app-misc/baz-1.0",
+                ],
+            ),
+        )
+
+        self.runBinPkgSelectionTest(test_cases, binpkgs=binpkgs, ebuilds=ebuilds)
+
+    def testEbuildIncludeBug933868(self):
+        ebuilds = self.pkgs_no_deps
+        installed = self.pkgs_with_deps
+        binpkgs = self.pkgs_no_deps.copy()
+        binpkgs.pop("app-misc/bar-1.0")
+
+        binrepos = {"test_binrepo": binpkgs}
+
+        test_cases = (
+            # undesired behaviour: --getbinpkgonly prevents access to ebuilds
+            # for packages without any binaries and so app-misc/bar cannot be
+            # merged at all.
+            #
+            # required app-misc/bar to be an ebuild, but all others should be
+            # binary (or bail entirely).
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=False,
+                options={"--getbinpkgonly": True},
+            ),
+            # ...even in combination with --usepkg-exclude because --usepkgonly
+            # is implied and therefore all of porttree is out of scope
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=False,
+                options={
+                    "--getbinpkgonly": True,
+                    "--usepkg-exclude": ["app-misc/bar"],
+                },
+            ),
+            # plain --getbinpkg works if the expected binaries are available...
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=True,
+                ignore_mergelist_order=True,
+                options={"--getbinpkg": True},
+                mergelist=[
+                    "[binary,remote]app-misc/foo-1.0",
+                    "app-misc/bar-1.0",
+                    "[binary,remote]app-misc/baz-1.0",
+                ],
+            ),
+            # ...but still admits ebuilds for others if the desired binary is
+            # unavailable (--usepkg-exclude used here, but could be just that
+            # an updated binary is not yet built).
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=True,
+                ignore_mergelist_order=True,
+                options={
+                    "--getbinpkg": True,
+                    "--usepkg-exclude": ["foo"],
+                },
+                mergelist=[
+                    "app-misc/foo-1.0",
+                    "app-misc/bar-1.0",
+                    "[binary,remote]app-misc/baz-1.0",
+                ],
+            ),
+            # use --ebuild-include to whitelist app-misc/bar and exclude allow
+            # other ebuilds...
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=True,
+                ignore_mergelist_order=True,
+                options={
+                    "--getbinpkg": True,
+                    "--ebuild-include": ["bar"],
+                },
+                mergelist=[
+                    "[binary,remote]app-misc/foo-1.0",
+                    "app-misc/bar-1.0",
+                    "[binary,remote]app-misc/baz-1.0",
+                ],
+            ),
+            # ...which has the desired effect of no viable solution where we
+            # have otherwise fallen back on the ebuild for app-misc/foo where
+            # the binary was unavailable (as above).
+            ResolverPlaygroundTestCase(
+                self.pkg_atoms,
+                success=False,
+                options={
+                    "--getbinpkg": True,
+                    "--ebuild-include": ["bar"],
+                    "--usepkg-exclude": ["foo"],
+                },
+            ),
+        )
+
+        self.runBinPkgSelectionTest(
+            test_cases,
+            binpkgs=binpkgs,
+            binrepos=binrepos,
+            ebuilds=ebuilds,
+            installed=installed,
+        )
+
+
 # test --getbinpkg-exclude option
 class GetBinPkgExcludeTestCase(BinPkgSelectionTestCase):
 
