@@ -1185,13 +1185,32 @@ if ___eapi_has_eapply_user; then
 		done
 
 		if (( ${#patch_by[@]} > 0 )); then
+			mkdir -p -- "${PORTAGE_BUILDDIR}"/build-info || die "eapply_user: could not create build-info directory"
+			local userpatch_digests="${PORTAGE_BUILDDIR}"/build-info/user_patch.digests
+			local userpatches_hash="${PORTAGE_BUILDDIR}"/build-info/USER_PATCHES
+
 			printf -v hr "%$(( columns - 3 ))s"
 			hr=${hr//?/=}
 			einfo "${PORTAGE_COLOR_INFO}${hr}${PORTAGE_COLOR_NORMAL}"
 			einfo "Applying user patches from ${basedir} ..."
+
+			local hash
+			local total=""
 			while IFS= read -rd '' basename; do
 				eapply -- "${patch_by[$basename]}"
+
+				IFS=" " read -r hash _ < <(sha256sum -- "${patch_by[$basename]}") \
+				&& wait "$!" \
+				&& total+="${hash}" \
+				&& printf '%s\n' "${hash} ${basename}" >> "${userpatch_digests}" \
+				|| die "eapply_user: could not generate individual user patch digests"
 			done < <(printf '%s\0' "${!patch_by[@]}" | LC_ALL=C sort -z)
+
+			IFS=" " read -r hash _ < <(printf '%s' "${total}" | sha256sum) \
+			&& wait "$!" \
+			&& printf '%s\n' "${hash}" > "${userpatches_hash}" \
+			|| die "eapply_user: could not generate hash over all user patches"
+
 			einfo "User patches applied."
 			einfo "${PORTAGE_COLOR_INFO}${hr}${PORTAGE_COLOR_NORMAL}"
 		fi
