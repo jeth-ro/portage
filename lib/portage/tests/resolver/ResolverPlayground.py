@@ -65,6 +65,36 @@ def _combine_repo_config(conf, lines):
     return merged
 
 
+
+class PlaygroundTestData:
+    def __init__(
+        self,
+        filename,
+        tarball={},
+    ):
+        if not tarball:
+            test = "test_phase_unpack" # FIXME: get from call stack
+            self.path = os.path.join(os.path.dirname(__file__), "data", test, filename)
+            self.path = self.path.replace('resolver', 'ebuild') # FIXME: as above
+            assert os.path.exists(self.path), f"Missing test data at '{self.path}'"
+        else:
+            self.path = filename
+            self.tarball = tarball
+
+    def install(self, destination):
+        if self.tarball:
+            from tarfile import TarFile, TarInfo
+            import io
+            filename = os.path.join(destination)
+            with TarFile.open(filename, mode='w') as tar:
+                for name, data in self.tarball.items():
+                    info = TarInfo(name)
+                    info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+        else:
+            shutil.copyfile(v.path, destination)
+
+
 class ResolverPlayground:
     """
     This class helps to create the necessary files on disk and
@@ -341,6 +371,9 @@ class ResolverPlayground:
     def _create_distfiles(self, distfiles):
         os.makedirs(self.distdir)
         for k, v in distfiles.items():
+            if isinstance(v, PlaygroundTestData):
+                v.install(os.path.join(self.distdir, k))
+                continue
             with open(os.path.join(self.distdir, k), "wb") as f:
                 f.write(v)
 
@@ -350,6 +383,18 @@ class ResolverPlayground:
             repo = a.repo
             if repo is None:
                 repo = "test_repo"
+
+            repo_dir = self._get_repo_dir(repo)
+            ebuild_dir = os.path.join(repo_dir, a.cp)
+            ebuild_path = os.path.join(ebuild_dir, a.cpv.split("/")[1] + ".ebuild")
+            try:
+                os.makedirs(ebuild_dir)
+            except OSError:
+                pass
+
+            if isinstance(ebuilds[cpv], PlaygroundTestData):
+                shutil.copyfile(ebuilds[cpv].path, ebuild_path)
+                continue
 
             metadata = ebuilds[cpv].copy()
             copyright_header = metadata.pop("COPYRIGHT_HEADER", None)
@@ -366,14 +411,6 @@ class ResolverPlayground:
                     "metadata of ebuild '%s' contains unknown keys: %s"
                     % (cpv, sorted(unknown_keys))
                 )
-
-            repo_dir = self._get_repo_dir(repo)
-            ebuild_dir = os.path.join(repo_dir, a.cp)
-            ebuild_path = os.path.join(ebuild_dir, a.cpv.split("/")[1] + ".ebuild")
-            try:
-                os.makedirs(ebuild_dir)
-            except OSError:
-                pass
 
             with open(ebuild_path, "w") as f:
                 if copyright_header is not None:
